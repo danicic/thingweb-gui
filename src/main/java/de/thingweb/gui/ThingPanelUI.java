@@ -28,6 +28,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import de.thingweb.client.Callback;
 import de.thingweb.client.Client;
 import de.thingweb.client.UnsupportedException;
+import de.thingweb.client.security.Registration;
+import de.thingweb.client.security.Security4NicePlugfest;
 import de.thingweb.desc.pojo.ActionDescription;
 import de.thingweb.desc.pojo.EventDescription;
 import de.thingweb.desc.pojo.PropertyDescription;
@@ -43,22 +45,29 @@ import org.slf4j.LoggerFactory;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.plaf.basic.BasicTextUI;
-import javax.swing.text.JTextComponent;
 import javax.swing.text.PlainDocument;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.List;
+import javax.swing.border.TitledBorder;
 
 public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	
 	private static final Logger log = LoggerFactory.getLogger(ThingPanelUI.class);
 
 	private static final long serialVersionUID = 2117762031555752901L;
+	
+	// Security
+	JToggleButton tglbtnSecurity;
+	Security4NicePlugfest s4p;
+	Registration sreg;
+	JEditorPane textAreaSecurityToken;
 	
 	final Client client;
 	// TODO support other media types
@@ -72,7 +81,8 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	
 	JTextPane infoTextPane;
 
-	Map<String, JTextComponent> propertyComponents;
+	Map<String, JTextField> propertyComponents;
+	Map<String, JTextField> actionComponents;
 	
 	final static BigInteger MAX_UNSIGNED_LONG = new BigInteger("18446744073709551615");
 	final static BigInteger MAX_UNSIGNED_INT = BigInteger.valueOf(4294967295L);
@@ -127,6 +137,13 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 		}
 		return textField;
 	}
+	
+	private Security4NicePlugfest getSecurity() {
+		if(s4p == null) {
+			s4p = new Security4NicePlugfest();
+		}
+		return s4p;
+	}
 
 	/**
 	 * Create the panel.
@@ -135,9 +152,13 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	public ThingPanelUI(Client client) {
 		this.client = client;
 		propertyComponents = new HashMap<>();
+		actionComponents = new HashMap<>();
 		
 		JPanel gbPanel = new JPanel();
-		gbPanel.setLayout(new GridBagLayout());
+		GridBagLayout gbl_gbPanel = new GridBagLayout();
+		gbl_gbPanel.rowWeights = new double[]{0.0, 1.0};
+		gbl_gbPanel.columnWeights = new double[]{1.0, 0.0, 0.0, 0.0, 0.0};
+		gbPanel.setLayout(gbl_gbPanel);
 		
 		infoTextPane = new JTextPane();
 		infoTextPane.setEditable(false);
@@ -169,10 +190,139 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 		
 		// URI and such
 		GridBagConstraints gbc0_0 = new GridBagConstraints();
+		gbc0_0.insets = new Insets(0, 0, 5, 5);
 		gbc0_0.gridx = 0;
 		gbc0_0.gridy = yline;
 		gbc0_0.gridwidth = 4;
 		gbPanel.add(new JLabel("<html><h4>" + client.getUsedProtocolURI() + " (" + mediaType + ")</h4></html>"), gbc0_0);
+		
+		final String labelStringOn = "Security (ON)";
+		final String labelStringOff = "Security (OFF)";
+		
+		tglbtnSecurity = new JToggleButton(labelStringOn);
+		tglbtnSecurity.setSelected(true);
+		tglbtnSecurity.setHorizontalAlignment(SwingConstants.RIGHT);
+		GridBagConstraints gbc_tglbtnSecurity = new GridBagConstraints();
+		gbc_tglbtnSecurity.insets = new Insets(0, 0, 5, 0);
+		gbc_tglbtnSecurity.anchor = GridBagConstraints.EAST;
+		gbc_tglbtnSecurity.gridx = 4;
+		gbc_tglbtnSecurity.gridy = 0;		
+		gbPanel.add(tglbtnSecurity, gbc_tglbtnSecurity);
+		
+		yline++;
+		
+		JPanel panelSecurity = new JPanel();
+		panelSecurity.setBorder(new TitledBorder(null, "Security", TitledBorder.LEADING, TitledBorder.TOP, null, null));
+		GridBagConstraints gbc_panelSecurity = new GridBagConstraints();
+		gbc_panelSecurity.insets = new Insets(0, 0, 5, 0);
+		gbc_panelSecurity.gridwidth = 5;
+		gbc_panelSecurity.fill = GridBagConstraints.BOTH;
+		gbc_panelSecurity.gridx = 0;
+		gbc_panelSecurity.gridy = yline;
+		gbPanel.add(panelSecurity, gbc_panelSecurity);
+		GridBagLayout gbl_panelSecurity = new GridBagLayout();
+		gbl_panelSecurity.columnWidths = new int[]{0, 0, 0, 0, 0};
+		gbl_panelSecurity.rowHeights = new int[]{0, 0, 0, 0};
+		gbl_panelSecurity.columnWeights = new double[]{0.0, 1.0, 0.0, 0.0, Double.MIN_VALUE};
+		gbl_panelSecurity.rowWeights = new double[]{0.0, 1.0, 1.0, Double.MIN_VALUE};
+		panelSecurity.setLayout(gbl_panelSecurity);
+		
+		JButton btnSecurityRegister = new JButton("1. Register");
+		GridBagConstraints gbc_btnSecurityRegister = new GridBagConstraints();
+		gbc_btnSecurityRegister.anchor = GridBagConstraints.WEST;
+		gbc_btnSecurityRegister.insets = new Insets(0, 0, 5, 5);
+		gbc_btnSecurityRegister.gridx = 0;
+		gbc_btnSecurityRegister.gridy = 0;
+		panelSecurity.add(btnSecurityRegister, gbc_btnSecurityRegister);
+		
+		JButton btnSecurityRequestToken = new JButton("2. Request Token");
+		GridBagConstraints gbc_btnSecurityRequestToken = new GridBagConstraints();
+		gbc_btnSecurityRequestToken.anchor = GridBagConstraints.WEST;
+		gbc_btnSecurityRequestToken.insets = new Insets(0, 0, 5, 5);
+		gbc_btnSecurityRequestToken.gridx = 1;
+		gbc_btnSecurityRequestToken.gridy = 0;
+		panelSecurity.add(btnSecurityRequestToken, gbc_btnSecurityRequestToken);
+		
+		JCheckBox chckbxAllowModifyingSecurityToken = new JCheckBox("<html>Allow modifying security token <br/> (Warning: may break communication!)\r\n</html>");
+		GridBagConstraints gbc_chckbxAllowModifyingSecurityToken = new GridBagConstraints();
+		gbc_chckbxAllowModifyingSecurityToken.insets = new Insets(0, 0, 5, 0);
+		gbc_chckbxAllowModifyingSecurityToken.gridx = 3;
+		gbc_chckbxAllowModifyingSecurityToken.gridy = 0;
+		panelSecurity.add(chckbxAllowModifyingSecurityToken, gbc_chckbxAllowModifyingSecurityToken);
+		
+
+		textAreaSecurityToken = new JEditorPane();
+		textAreaSecurityToken.setEditable(false);
+		
+		JScrollPane scrollPane = new JScrollPane(textAreaSecurityToken);
+		scrollPane.setPreferredSize(new Dimension(100, 75));
+		scrollPane.setMaximumSize(new Dimension(100, 75));
+		scrollPane.setSize(new Dimension(100, 100));
+		GridBagConstraints gbc_scrollPane = new GridBagConstraints();
+		gbc_scrollPane.gridwidth = 3;
+		gbc_scrollPane.insets = new Insets(0, 0, 5, 5);
+		gbc_scrollPane.fill = GridBagConstraints.BOTH;
+		gbc_scrollPane.gridx = 1;
+		gbc_scrollPane.gridy = 1;
+		panelSecurity.add(scrollPane, gbc_scrollPane);
+		
+		chckbxAllowModifyingSecurityToken.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				textAreaSecurityToken.setEditable(chckbxAllowModifyingSecurityToken.isSelected());
+				if(chckbxAllowModifyingSecurityToken.isSelected()) {
+					chckbxAllowModifyingSecurityToken.setForeground(Color.RED);
+				} else {
+					chckbxAllowModifyingSecurityToken.setForeground(null);
+				}
+			}
+		});
+		
+		tglbtnSecurity.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				if (tglbtnSecurity.isSelected()) {
+					tglbtnSecurity.setForeground(null); // default
+					tglbtnSecurity.setText(labelStringOn);
+					panelSecurity.setVisible(true);
+					gbPanel.repaint();
+					gbPanel.updateUI();
+			    } else {
+			    	tglbtnSecurity.setForeground(Color.RED);
+			    	tglbtnSecurity.setText(labelStringOff);
+			    	panelSecurity.setVisible(false);
+			    	sreg = null;
+			    	textAreaSecurityToken.setText("");
+			    }
+			}
+		});
+		
+		btnSecurityRegister.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				Security4NicePlugfest sec = getSecurity();
+				try {
+					sreg = sec.requestRegistrationAM();
+					JOptionPane.showMessageDialog(null, "Registration succesful (client_id=" + sreg.c_id + ", client_security=" + sreg.c_secret + ")", "Security Registration", JOptionPane.INFORMATION_MESSAGE);
+				} catch (IOException e1) {
+					JOptionPane.showMessageDialog(null, "" + e1.getMessage(), "Security Registration", JOptionPane.ERROR_MESSAGE);
+				}
+			}
+		});
+		
+		btnSecurityRequestToken.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent e) {
+				if(sreg == null) {
+					JOptionPane.showMessageDialog(null, "Please first register!", "Security Request Token", JOptionPane.ERROR_MESSAGE);
+				} else {
+					Security4NicePlugfest sec = getSecurity();
+					try {
+						textAreaSecurityToken.setText(sec.requestASToken(sreg));
+						JOptionPane.showMessageDialog(null, "Request Token succesful", "Security Request Token", JOptionPane.INFORMATION_MESSAGE);
+					} catch (IOException e1) {
+						JOptionPane.showMessageDialog(null, "" + e1.getMessage(), "Security Request Token", JOptionPane.ERROR_MESSAGE);
+					}
+				}
+			}
+		});
+
 		
 		yline++;
 
@@ -310,7 +460,7 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 				} else {
 					textField = createTextField(a.getInputType(), false);
 				}
-				
+				actionComponents.put(a.getName(), textField);
 
 				// fire button
 				GridBagConstraints gbcX_2 = new GridBagConstraints();
@@ -496,7 +646,16 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	protected void clientGET(String prop) {
 		try {
 			printInfo("GET request for " + prop, false);
-			client.get(prop, this);
+			if(tglbtnSecurity.isSelected()) {
+				if(textAreaSecurityToken.getText() == null || textAreaSecurityToken.getText().length() == 0) {
+					JOptionPane.showMessageDialog(null, "Unselect security or request as_token first", "Security", JOptionPane.ERROR_MESSAGE);
+				} else {
+					log.info("Start 'secure' get: " + prop);
+					client.get(prop, this, textAreaSecurityToken.getText());
+				}
+			} else {
+				client.get(prop, this);
+			}
 		} catch (UnsupportedException e) {
 			JOptionPane.showMessageDialog(null, "" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 		}
@@ -505,7 +664,16 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	protected void clientObserve(String prop) {
 		try {
 			printInfo("Observe request for " + prop, false);
-			client.observe(prop, this);
+			if(tglbtnSecurity.isSelected()) {
+				if(textAreaSecurityToken.getText() == null || textAreaSecurityToken.getText().length() == 0) {
+					JOptionPane.showMessageDialog(null, "Unselect security or request as_token first", "Security", JOptionPane.ERROR_MESSAGE);
+				} else {
+					log.info("Start 'secure' observe: " + prop);
+					client.observe(prop, this, textAreaSecurityToken.getText());
+				}
+			} else {
+				client.observe(prop, this);
+			}
 		} catch (UnsupportedException e) {
 			JOptionPane.showMessageDialog(null, "" + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
 		}
@@ -516,7 +684,16 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 			byte[] payload = getPayload(prop, outputType, svalue);
 			Content c = new Content(payload, mediaType);
 			printInfo("PUT request for " + prop + ": " + new String(payload), false);
-			client.put(prop, c, this);
+			if(tglbtnSecurity.isSelected()) {
+				if(textAreaSecurityToken.getText() == null || textAreaSecurityToken.getText().length() == 0) {
+					JOptionPane.showMessageDialog(null, "Unselect security or request as_token first", "Security", JOptionPane.ERROR_MESSAGE);
+				} else {
+					log.info("Start 'secure' put: " + prop);
+					client.put(prop, c, this, textAreaSecurityToken.getText());
+				}
+			} else {
+				client.put(prop, c, this);
+			}
 		} catch (IllegalArgumentException e) {
 			JOptionPane.showMessageDialog(null, "No valid value of type '" + outputType + "' given: " + e.getMessage(), "Value Error", JOptionPane.ERROR_MESSAGE);
 		} catch (UnsupportedException e) {
@@ -529,7 +706,16 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 			byte[] payload = getPayload(prop, inputType, svalue);
 			Content c = new Content(payload, mediaType);
 			printInfo("Action request for " + prop + ": " + new String(payload), false);
-			client.action(prop, c, this);
+			if(tglbtnSecurity.isSelected()) {
+				if(textAreaSecurityToken.getText() == null || textAreaSecurityToken.getText().length() == 0) {
+					JOptionPane.showMessageDialog(null, "Unselect security or request as_token first", "Security", JOptionPane.ERROR_MESSAGE);
+				} else {
+					log.info("Start 'secure' action: " + prop);
+					client.action(prop, c, this, textAreaSecurityToken.getText());
+				}
+			} else {
+				client.action(prop, c, this);
+			}
 		} catch (IllegalArgumentException e) {
 			JOptionPane.showMessageDialog(null, "No valid value of type '" + inputType + "' given", "Value Error", JOptionPane.ERROR_MESSAGE);
 		} catch (UnsupportedException e) {
@@ -543,46 +729,72 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	public void onPut(String propertyName, Content response) {
 		// refreshProperty(propertyName);
 		printInfo("PUT response success for " + propertyName, false);
+		
+		JTextField text = propertyComponents.get(propertyName);
+		if(text != null) {
+			text.setBackground(UIManager.getColor("TextField.background")); // default, override possible error
+		} else {
+			log.error("No text-field found for propertyName: " + propertyName);
+		}
 	}
 
 	@Override
 	public void onPutError(String propertyName) {
 		printInfo("PUT failure for " + propertyName, true);
+		
+		JTextField text = propertyComponents.get(propertyName);
+		if(text != null) {
+			text.setBackground(Color.RED);
+		} else {
+			log.error("No text-field found for propertyName: " + propertyName);
+		}
 	}
 	
 	
 	private void get(String msgPrefix, String propertyName, Content response) {
 		// TODO deal with other media-types
 		assert(response.getMediaType() == MediaType.TEXT_PLAIN || response.getMediaType() == MediaType.APPLICATION_JSON);
-		JTextComponent text = propertyComponents.get(propertyName);
-		try {
-			JsonNode n = ContentHelper.readJSON(response.getContent());
-			String t;
-			if(useValueInJsonInsteadOfName) {
-				t = n.get(JSON_VALUE).asText();
-			} else {
-				t = n.get(propertyName).asText();
-			}
-			text.setText(t);
-			if(text.getText().equals(t)) {
-				printInfo(msgPrefix + " success for " + propertyName + ": " + new String(response.getContent()), false);
-			} else {
-				// Note: should not happen though
-				printInfo(msgPrefix + " error for " + propertyName + ": setting text-field value '" + t + "' failed", true);
-			}
-		} catch (Exception e) {
-			printInfo(msgPrefix + " parsing error for " + propertyName + " and value = '" + new String(response.getContent()) + "'. Invalid or empty message?", true);
-		}		
+		JTextField text = propertyComponents.get(propertyName);
+		if(text != null) {
+			text.setBackground(UIManager.getColor("TextField.background")); // default, override possible error
+			try {
+				JsonNode n = ContentHelper.readJSON(response.getContent());
+				String t;
+				if(useValueInJsonInsteadOfName) {
+					t = n.get(JSON_VALUE).asText();
+				} else {
+					t = n.get(propertyName).asText();
+				}
+				text.setText(t);
+				if(text.getText().equals(t)) {
+					printInfo(msgPrefix + " success for " + propertyName + ": " + new String(response.getContent()), false);
+				} else {
+					// Note: should not happen though
+					printInfo(msgPrefix + " error for " + propertyName + ": setting text-field value '" + t + "' failed", true);
+				}
+			} catch (Exception e) {
+				printInfo(msgPrefix + " parsing error for " + propertyName + " and value = '" + new String(response.getContent()) + "'. Invalid or empty message?", true);
+			}	
+		} else {
+			log.error("No text-field found for propertyName: " + propertyName);
+		}
+	
 	}
 
 	@Override
 	public void onGet(String propertyName, Content response) {
-		get("GET response", propertyName, response);		
+		get("GET response", propertyName, response);
 	}
 
 	@Override
 	public void onGetError(String propertyName) {
 		printInfo("GET failure for " + propertyName, true);
+		JTextField text = propertyComponents.get(propertyName);
+		if(text != null) {
+			text.setBackground(Color.RED);
+		} else {
+			log.error("No text-field found for propertyName: " + propertyName);
+		}
 	}
 
 	@Override
@@ -593,6 +805,12 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 	@Override
 	public void onObserveError(String propertyName) {
 		printInfo("Observe failure for " + propertyName, true);
+		JTextField text = propertyComponents.get(propertyName);
+		if(text != null) {
+			text.setBackground(Color.RED);
+		} else {
+			log.error("No text-field found for propertyName: " + propertyName);
+		}
 	}
 
 	@Override
@@ -603,11 +821,25 @@ public class ThingPanelUI extends JPanel implements ActionListener, Callback {
 		// TODO how to deal with action response?
 		@SuppressWarnings("unused")
 		String sresp = new String(response.getContent());
+		
+		JTextField text = actionComponents.get(actionName);
+		if(text != null) {
+			text.setBackground(UIManager.getColor("TextField.background")); // default, override possible error
+		} else {
+			log.error("No text-field found for actionName: " + actionName);
+		}
 	}
 
 	@Override
 	public void onActionError(String actionName) {
 		printInfo("Action failure for " + actionName, true);
+		
+		JTextField text = actionComponents.get(actionName);
+		if(text != null) {
+			text.setBackground(Color.RED);
+		} else {
+			log.error("No text-field found for actionName: " + actionName);
+		}
 	}
 
 }
